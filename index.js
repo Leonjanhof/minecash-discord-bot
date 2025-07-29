@@ -155,9 +155,55 @@ async function createTicket(userId, type, amount = null, description = '') {
   }
 }
 
+// Ensure user exists in database
+async function ensureUserExists(userId) {
+  try {
+    // Check if user exists
+    const { data: existingUser, error: checkError } = await supabase
+      .from('users')
+      .select('discord_user_id')
+      .eq('discord_user_id', userId)
+      .single();
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('❌ Error checking user:', checkError);
+      return false;
+    }
+
+    // If user doesn't exist, create them
+    if (!existingUser) {
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({
+          discord_user_id: userId,
+          created_at: new Date().toISOString()
+        });
+
+      if (insertError) {
+        console.error('❌ Error creating user:', insertError);
+        return false;
+      }
+
+      console.log(`✅ Created user ${userId} in database`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('❌ Error ensuring user exists:', error);
+    return false;
+  }
+}
+
 // Log ticket to database
 async function logTicketToDatabase(userId, type, amount, channelId, description) {
   try {
+    // Ensure user exists before creating ticket
+    const userExists = await ensureUserExists(userId);
+    if (!userExists) {
+      console.error(`❌ Could not ensure user ${userId} exists`);
+      return;
+    }
+
     const { error } = await supabase
       .from('support_tickets')
       .insert({
