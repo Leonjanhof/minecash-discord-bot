@@ -1,18 +1,9 @@
 {
   "version": 2,
-  "functions": {
-    "api/index.js": {
-      "maxDuration": 30
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api"
     }
-  },
-  "env": {
-    "DISCORD_BOT_TOKEN": "@discord-bot-token",
-    "DISCORD_GUILD_ID": "@discord-guild-id",
-    "ADMIN_ROLE_ID": "@admin-role-id",
-    "SUPPORT_CATEGORY_ID": "@support-category-id",
-    "DEPOSIT_WITHDRAW_CATEGORY_ID": "@deposit-withdraw-category-id",
-    "SUPABASE_URL": "@supabase-url",
-    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key",
-    "DISCORD_BOT_SECRET": "@discord-bot-secret"
-  }
+  ]
 } 
