@@ -45,7 +45,7 @@ async function createTicket(userId, type, amount = null, description = '') {
 
     const guild = client.guilds.cache.get(config.guildId);
     if (!guild) {
-      console.error('❌ Guild not found');
+      console.error('Guild not found');
       return { success: false, error: 'Guild not found' };
     }
 
@@ -150,7 +150,7 @@ async function createTicket(userId, type, amount = null, description = '') {
     return { success: true, channelId: channel.id, channelName };
 
   } catch (error) {
-    console.error(`❌ Error creating ticket:`, error);
+    console.error(`Error creating ticket:`, error);
     return { success: false, error: error.message };
   }
 }
@@ -166,7 +166,7 @@ async function ensureUserExists(userId) {
       .single();
 
     if (checkError && checkError.code !== 'PGRST116') {
-      console.error('❌ Error checking user:', checkError);
+      console.error('Error checking user:', checkError);
       return false;
     }
 
@@ -180,7 +180,7 @@ async function ensureUserExists(userId) {
         });
 
       if (insertError) {
-        console.error('❌ Error creating user:', insertError);
+        console.error('Error creating user:', insertError);
         return false;
       }
 
@@ -189,7 +189,7 @@ async function ensureUserExists(userId) {
 
     return true;
   } catch (error) {
-    console.error('❌ Error ensuring user exists:', error);
+    console.error('Error ensuring user exists:', error);
     return false;
   }
 }
@@ -200,7 +200,7 @@ async function logTicketToDatabase(userId, type, amount, channelId, description)
     // Ensure user exists before creating ticket
     const userExists = await ensureUserExists(userId);
     if (!userExists) {
-      console.error(`❌ Could not ensure user ${userId} exists`);
+      console.error(`Could not ensure user ${userId} exists`);
       return;
     }
 
@@ -217,12 +217,12 @@ async function logTicketToDatabase(userId, type, amount, channelId, description)
       });
 
     if (error) {
-      console.error('❌ Database error:', error);
+      console.error('Database error:', error);
     } else {
       console.log(`Logged ticket to database: ${type} for user ${userId}`);
     }
   } catch (error) {
-    console.error('❌ Database logging error:', error);
+    console.error('Database logging error:', error);
   }
 }
 
@@ -235,7 +235,54 @@ async function isUserInServer(userId) {
     const member = await guild.members.fetch(userId).catch(() => null);
     return member !== null;
   } catch (error) {
-    console.error('❌ Error checking user membership:', error);
+    console.error('Error checking user membership:', error);
+    return false;
+  }
+}
+
+// Check if user has admin permissions (Discord roles)
+function hasAdminPermissions(member) {
+  if (!member || !config.adminRoleId) return false;
+  
+  // Check if user has the admin role
+  const hasAdminRole = member.roles.cache.has(config.adminRoleId);
+  
+  // Also check if user has administrator permission
+  const hasAdminPermission = member.permissions.has(PermissionFlagsBits.Administrator);
+  
+  return hasAdminRole || hasAdminPermission;
+}
+
+// Check if user has admin role in database
+async function hasAdminRoleInDatabase(discordUserId) {
+  try {
+    // Get user from database using Discord ID
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select(`
+        id,
+        role_id,
+        user_roles!inner (
+          id,
+          name
+        )
+      `)
+      .eq('discord_id', discordUserId)
+      .single();
+
+    if (userError || !user) {
+      console.error('Error fetching user from database:', userError);
+      return false;
+    }
+
+    // Check if user has admin role (role_id = 3)
+    const hasAdminRole = user.role_id === 3;
+    
+    console.log(`User ${discordUserId} has role_id: ${user.role_id}, admin: ${hasAdminRole}`);
+    
+    return hasAdminRole;
+  } catch (error) {
+    console.error('Error checking admin role in database:', error);
     return false;
   }
 }
@@ -279,6 +326,28 @@ client.on('interactionCreate', async (interaction) => {
 // Handle closing tickets
 async function handleCloseTicket(interaction) {
   try {
+    // Check if user has admin permissions (Discord roles)
+    const member = interaction.member;
+    const hasDiscordAdmin = hasAdminPermissions(member);
+    
+    // Check if user has admin role in database
+    const hasDatabaseAdmin = await hasAdminRoleInDatabase(interaction.user.id);
+    
+    // User must have BOTH Discord admin role AND database admin role
+    if (!hasDiscordAdmin || !hasDatabaseAdmin) {
+      const embed = new EmbedBuilder()
+        .setColor('#FF6B6B')
+        .setTitle('Permission denied')
+        .setDescription('You do not have permission to close tickets. Only staff members with admin role can close tickets.')
+        .setTimestamp();
+      
+      await interaction.reply({ 
+        embeds: [embed], 
+        ephemeral: true 
+      });
+      return;
+    }
+
     const channelId = interaction.customId.split('_')[2];
     const channel = interaction.guild.channels.cache.get(channelId);
     
@@ -294,7 +363,7 @@ async function handleCloseTicket(interaction) {
       .eq('discord_channel_id', channelId);
 
     if (error) {
-      console.error('❌ Database error updating ticket status:', error);
+      console.error('Database error updating ticket status:', error);
     }
 
     // Send closing message
@@ -312,14 +381,14 @@ async function handleCloseTicket(interaction) {
         await channel.delete();
         console.log(`Deleted channel: ${channel.name}`);
       } catch (error) {
-        console.error('❌ Error deleting channel:', error);
+        console.error('Error deleting channel:', error);
       }
     }, 10000);
 
     await interaction.reply({ content: 'Ticket closed successfully', ephemeral: true });
 
   } catch (error) {
-    console.error('❌ Error closing ticket:', error);
+    console.error('Error closing ticket:', error);
     await interaction.reply({ content: 'Error closing ticket', ephemeral: true });
   }
 }
@@ -327,6 +396,28 @@ async function handleCloseTicket(interaction) {
 // Handle confirming deposits/withdrawals
 async function handleConfirmTransaction(interaction) {
   try {
+    // Check if user has admin permissions (Discord roles)
+    const member = interaction.member;
+    const hasDiscordAdmin = hasAdminPermissions(member);
+    
+    // Check if user has admin role in database
+    const hasDatabaseAdmin = await hasAdminRoleInDatabase(interaction.user.id);
+    
+    // User must have BOTH Discord admin role AND database admin role
+    if (!hasDiscordAdmin || !hasDatabaseAdmin) {
+      const embed = new EmbedBuilder()
+        .setColor('#FF6B6B')
+        .setTitle('Permission denied')
+        .setDescription('You do not have permission to confirm transactions. Only staff members with admin role can process deposits and withdrawals.')
+        .setTimestamp();
+      
+      await interaction.reply({ 
+        embeds: [embed], 
+        ephemeral: true 
+      });
+      return;
+    }
+
     const parts = interaction.customId.split('_');
     const type = parts[1]; // deposit or withdraw
     const channelId = parts[2];
@@ -346,8 +437,14 @@ async function handleConfirmTransaction(interaction) {
        .single();
 
      if (userError || !user) {
-       console.error('❌ Error fetching user:', userError);
-       await interaction.reply({ content: 'User not found in database. Please ensure you have linked your Discord account.', ephemeral: true });
+       console.error('Error fetching user:', userError);
+       const embed = new EmbedBuilder()
+         .setColor('#FF6B6B')
+         .setTitle('User not found')
+         .setDescription('User not found in database. Please ensure you have linked your Discord account.')
+         .setTimestamp();
+       
+       await interaction.reply({ embeds: [embed], ephemeral: true });
        return;
      }
 
@@ -359,7 +456,7 @@ async function handleConfirmTransaction(interaction) {
       .single();
 
     if (fetchError) {
-      console.error('❌ Error fetching user balance:', fetchError);
+      console.error('Error fetching user balance:', fetchError);
       await interaction.reply({ content: 'Error fetching user balance', ephemeral: true });
       return;
     }
@@ -384,7 +481,7 @@ async function handleConfirmTransaction(interaction) {
       .eq('user_id', user.id);
 
     if (updateError) {
-      console.error('❌ Error updating user balance:', updateError);
+      console.error('Error updating user balance:', updateError);
       await interaction.reply({ content: 'Error updating user balance', ephemeral: true });
       return;
     }
@@ -402,7 +499,7 @@ async function handleConfirmTransaction(interaction) {
       });
 
     if (transactionError) {
-      console.error('❌ Error logging transaction:', transactionError);
+      console.error('Error logging transaction:', transactionError);
     }
 
     // Update ticket status
@@ -416,7 +513,7 @@ async function handleConfirmTransaction(interaction) {
       .eq('discord_channel_id', channelId);
 
     if (ticketError) {
-      console.error('❌ Error updating ticket status:', ticketError);
+      console.error('Error updating ticket status:', ticketError);
     }
 
     // Send confirmation message
@@ -442,7 +539,7 @@ async function handleConfirmTransaction(interaction) {
     });
 
   } catch (error) {
-    console.error('❌ Error confirming transaction:', error);
+    console.error('Error confirming transaction:', error);
     await interaction.reply({ content: 'Error confirming transaction', ephemeral: true });
   }
 }
@@ -473,6 +570,7 @@ client.on('messageCreate', async (message) => {
 module.exports = {
   createTicket,
   isUserInServer,
+  hasAdminRoleInDatabase,
   client
 };
 
@@ -481,9 +579,9 @@ client.login(config.botToken);
 
 // Error handling
 client.on('error', (error) => {
-  console.error('❌ Discord client error:', error);
+  console.error('Discord client error:', error);
 });
 
 process.on('unhandledRejection', (error) => {
-  console.error('❌ Unhandled promise rejection:', error);
+  console.error('Unhandled promise rejection:', error);
 }); 
