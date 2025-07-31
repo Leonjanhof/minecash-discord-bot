@@ -99,7 +99,7 @@ async function createTicket(userId, type, amount = null, description = '') {
     // Create embed with updated format
     const embed = new EmbedBuilder()
       .setColor(type === 'withdraw' ? '#FF6B6B' : type === 'deposit' ? '#4ECDC4' : '#45B7D1')
-      .setTitle(`Minecash deposit request`)
+      .setTitle(`Minecash ${type} request`)
       .setDescription(`A new ${type} request has been created`)
       .addFields(
         { name: 'User', value: `<@${userId}>`, inline: true },
