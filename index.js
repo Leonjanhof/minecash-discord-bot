@@ -155,71 +155,59 @@ async function createTicket(userId, type, amount = null, description = '') {
   }
 }
 
-// Ensure user exists in database
-async function ensureUserExists(userId) {
+// Get internal user ID from Discord ID
+async function getUserIdByDiscordId(discordId) {
   try {
-    // Check if user exists
+    // Check if user exists and get their internal ID
     const { data: existingUser, error: checkError } = await supabase
       .from('users')
-      .select('discord_user_id')
-      .eq('discord_user_id', userId)
+      .select('id')
+      .eq('discord_id', discordId)
       .single();
 
     if (checkError && checkError.code !== 'PGRST116') {
       console.error('Error checking user:', checkError);
-      return false;
+      return null;
     }
 
-    // If user doesn't exist, create them
-    if (!existingUser) {
-      const { error: insertError } = await supabase
-        .from('users')
-        .insert({
-          discord_user_id: userId,
-          created_at: new Date().toISOString()
-        });
-
-      if (insertError) {
-        console.error('Error creating user:', insertError);
-        return false;
-      }
-
-      console.log(`✅ Created user ${userId} in database`);
+    if (existingUser) {
+      return existingUser.id;
     }
 
-    return true;
+    // User doesn't exist in our system yet
+    console.log(`User with Discord ID ${discordId} not found in database`);
+    return null;
   } catch (error) {
-    console.error('Error ensuring user exists:', error);
-    return false;
+    console.error('Error getting user ID:', error);
+    return null;
   }
 }
 
 // Log ticket to database
-async function logTicketToDatabase(userId, type, amount, channelId, description) {
+async function logTicketToDatabase(discordUserId, type, amount, channelId, description) {
   try {
-    // Ensure user exists before creating ticket
-    const userExists = await ensureUserExists(userId);
-    if (!userExists) {
-      console.error(`Could not ensure user ${userId} exists`);
+    // Get internal user ID from Discord ID
+    const internalUserId = await getUserIdByDiscordId(discordUserId);
+    if (!internalUserId) {
+      console.error(`User with Discord ID ${discordUserId} not found in database. Cannot create ticket.`);
       return;
     }
 
     const { error } = await supabase
       .from('support_tickets')
       .insert({
-        user_id: userId,
+        user_id: internalUserId,
         ticket_type: type,
         amount: amount,
         discord_channel_id: channelId,
         description: description,
-        status: 'pending',
-        created_at: new Date().toISOString()
+        status: 'pending'
       });
 
     if (error) {
       console.error('Database error:', error);
     } else {
-      console.log(`Logged ticket to database: ${type} for user ${userId}`);
+      console.log(`✅ Logged ticket to database: ${type} for Discord user ${discordUserId} (internal ID: ${internalUserId})`);
     }
   } catch (error) {
     console.error('Database logging error:', error);
