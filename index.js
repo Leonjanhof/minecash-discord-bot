@@ -521,7 +521,7 @@ async function handleConfirmTransaction(interaction) {
     if (channel) {
              const embed = new EmbedBuilder()
          .setColor('#4ECDC4')
-         .setTitle(`${type} confirmed`)
+         .setTitle(`${type.charAt(0).toUpperCase() + type.slice(1)} confirmed`)
          .setDescription(`${type === 'deposit' ? 'Deposited' : 'Withdrawn'} ${amount} GC`)
          .addFields(
            { name: 'User', value: `<@${userId}>`, inline: true },
