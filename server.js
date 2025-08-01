@@ -6,6 +6,9 @@ const { createTicket, isUserInServer } = require('./index');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Trust proxy for rate limiting (fixes X-Forwarded-For header issue)
+app.set('trust proxy', 1);
+
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
