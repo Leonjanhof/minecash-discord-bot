@@ -150,6 +150,11 @@ app.post('/create-ticket', authenticateRequest, sanitizeInput, async (req, res) 
           error: `Amount must be between ${minAmount} and ${maxAmount} GC` 
         });
       }
+    } else if (type === 'support') {
+      // Support tickets don't need amount validation
+      if (amount !== null && amount !== undefined) {
+        console.log('Support ticket with amount provided, ignoring amount');
+      }
     }
 
     const result = await createTicket(userId, type, amount, description);
