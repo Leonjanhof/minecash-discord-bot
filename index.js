@@ -140,14 +140,17 @@ async function getGCLimits() {
 // Handle ticket creation
 async function createTicket(userId, type, amount = null, description = '') {
   try {
-    // Get current GC limits
-    const limits = await getGCLimits();
-    const typeLimits = limits[type] || { min: 50, max: 500 };
-    
-    // Validate amount if provided
-    if (amount !== null && (amount < typeLimits.min || amount > typeLimits.max)) {
-      console.log(`Invalid amount: ${amount} (must be ${typeLimits.min}-${typeLimits.max})`);
-      return { success: false, error: `Amount must be between ${typeLimits.min} and ${typeLimits.max} GC` };
+    // Only validate amount for deposit/withdraw tickets, not support tickets
+    if (type === 'deposit' || type === 'withdraw') {
+      // Get current GC limits
+      const limits = await getGCLimits();
+      const typeLimits = limits[type] || { min: 50, max: 500 };
+      
+      // Validate amount if provided
+      if (amount !== null && (amount < typeLimits.min || amount > typeLimits.max)) {
+        console.log(`Invalid amount: ${amount} (must be ${typeLimits.min}-${typeLimits.max})`);
+        return { success: false, error: `Amount must be between ${typeLimits.min} and ${typeLimits.max} GC` };
+      }
     }
 
     const guild = client.guilds.cache.get(config.guildId);
