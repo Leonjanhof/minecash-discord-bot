@@ -52,8 +52,9 @@ const sanitizeInput = (req, res, next) => {
   if (req.body.description) {
     req.body.description = req.body.description.toString().trim();
   }
-  if (req.body.amount) {
-    req.body.amount = parseFloat(req.body.amount) || null;
+  // Always process amount field, even if it's null or undefined
+  if (req.body.hasOwnProperty('amount')) {
+    req.body.amount = req.body.amount !== null && req.body.amount !== undefined ? parseFloat(req.body.amount) || null : null;
   }
   next();
 };
@@ -152,6 +153,7 @@ app.post('/create-ticket', authenticateRequest, sanitizeInput, async (req, res) 
       }
     }
     // Support tickets don't need any amount validation - they can have null/undefined amounts
+    // No validation needed for support tickets
 
     const result = await createTicket(userId, type, amount, description);
     
