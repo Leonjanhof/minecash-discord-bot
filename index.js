@@ -34,6 +34,72 @@ client.once('ready', () => {
   console.log(`Monitoring guild: ${config.guildId}`);
 });
 
+// Check if user has existing open ticket of the same type
+async function hasExistingOpenTicket(discordUserId, ticketType) {
+  try {
+    // Get internal user ID from Discord ID
+    const internalUserId = await getUserIdByDiscordId(discordUserId);
+    if (!internalUserId) {
+      console.log(`User with Discord ID ${discordUserId} not found in database`);
+      return false;
+    }
+
+    // Check for existing open tickets of the same type
+    const { data: existingTickets, error } = await supabase
+      .from('support_tickets')
+      .select('id, ticket_type, status, created_at')
+      .eq('user_id', internalUserId)
+      .eq('ticket_type', ticketType)
+      .in('status', ['pending', 'approved'])
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error checking existing tickets:', error);
+      return false;
+    }
+
+    if (existingTickets && existingTickets.length > 0) {
+      console.log(`User ${discordUserId} already has an open ${ticketType} ticket`);
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Error checking existing tickets:', error);
+    return false;
+  }
+}
+
+// Get user's existing open tickets
+async function getUserOpenTickets(discordUserId) {
+  try {
+    // Get internal user ID from Discord ID
+    const internalUserId = await getUserIdByDiscordId(discordUserId);
+    if (!internalUserId) {
+      console.log(`User with Discord ID ${discordUserId} not found in database`);
+      return [];
+    }
+
+    // Get all open tickets for the user
+    const { data: openTickets, error } = await supabase
+      .from('support_tickets')
+      .select('id, ticket_type, status, amount, created_at, discord_channel_id')
+      .eq('user_id', internalUserId)
+      .in('status', ['pending', 'approved'])
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching open tickets:', error);
+      return [];
+    }
+
+    return openTickets || [];
+  } catch (error) {
+    console.error('Error getting user open tickets:', error);
+    return [];
+  }
+}
+
 // Handle ticket creation
 async function createTicket(userId, type, amount = null, description = '') {
   try {
@@ -54,6 +120,15 @@ async function createTicket(userId, type, amount = null, description = '') {
     if (!member) {
       console.log(`User ${userId} is not in the server`);
       return { success: false, error: 'User not in server' };
+    }
+
+    // Check if user already has an open ticket of the same type
+    const hasExistingTicket = await hasExistingOpenTicket(userId, type);
+    if (hasExistingTicket) {
+      return { 
+        success: false, 
+        error: `You already have an open ${type} ticket. Please wait for it to be resolved before creating a new one.` 
+      };
     }
 
     // Determine category based on ticket type
