@@ -100,13 +100,54 @@ async function getUserOpenTickets(discordUserId) {
   }
 }
 
+// Get GC limits from database
+async function getGCLimits() {
+  try {
+    const { data, error } = await supabase
+      .from('gc_limits')
+      .select('*');
+
+    if (error) {
+      console.error('Error fetching GC limits:', error);
+      return {
+        deposit: { min: 50, max: 500 },
+        withdraw: { min: 50, max: 500 }
+      };
+    }
+
+    const limits = {
+      deposit: { min: 50, max: 500 },
+      withdraw: { min: 50, max: 500 }
+    };
+
+    data?.forEach(limit => {
+      limits[limit.limit_type] = {
+        min: limit.min_amount,
+        max: limit.max_amount
+      };
+    });
+
+    return limits;
+  } catch (error) {
+    console.error('Error getting GC limits:', error);
+    return {
+      deposit: { min: 50, max: 500 },
+      withdraw: { min: 50, max: 500 }
+    };
+  }
+}
+
 // Handle ticket creation
 async function createTicket(userId, type, amount = null, description = '') {
   try {
+    // Get current GC limits
+    const limits = await getGCLimits();
+    const typeLimits = limits[type] || { min: 50, max: 500 };
+    
     // Validate amount if provided
-    if (amount !== null && (amount < 50 || amount > 500)) {
-      console.log(`Invalid amount: ${amount} (must be 50-500)`);
-      return { success: false, error: 'Amount must be between 50 and 500 GC' };
+    if (amount !== null && (amount < typeLimits.min || amount > typeLimits.max)) {
+      console.log(`Invalid amount: ${amount} (must be ${typeLimits.min}-${typeLimits.max})`);
+      return { success: false, error: `Amount must be between ${typeLimits.min} and ${typeLimits.max} GC` };
     }
 
     const guild = client.guilds.cache.get(config.guildId);
