@@ -1,7 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+const { createClient } = require('@supabase/supabase-js');
 const { createTicket, isUserInServer } = require('./index');
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -116,9 +123,33 @@ app.post('/create-ticket', authenticateRequest, sanitizeInput, async (req, res) 
       return res.status(400).json({ success: false, error: 'Invalid ticket type' });
     }
 
-    // Validate amount for deposit/withdraw tickets
-    if ((type === 'deposit' || type === 'withdraw') && (!amount || amount < 50 || amount > 500)) {
-      return res.status(400).json({ success: false, error: 'Amount must be between 50 and 500 GC' });
+    // Validate amount for deposit/withdraw tickets using dynamic limits
+    if (type === 'deposit' || type === 'withdraw') {
+      if (!amount) {
+        return res.status(400).json({ success: false, error: 'Amount is required for deposit and withdraw tickets' });
+      }
+      
+      // Get current limits from database
+      const { data: limitsData, error: limitsError } = await supabase
+        .from('gc_limits')
+        .select('*')
+        .eq('limit_type', type)
+        .single();
+
+      if (limitsError) {
+        console.error('Error fetching GC limits:', limitsError);
+        return res.status(500).json({ success: false, error: 'Error validating amount limits' });
+      }
+
+      const minAmount = limitsData?.min_amount || 50;
+      const maxAmount = limitsData?.max_amount || 500;
+
+      if (amount < minAmount || amount > maxAmount) {
+        return res.status(400).json({ 
+          success: false, 
+          error: `Amount must be between ${minAmount} and ${maxAmount} GC` 
+        });
+      }
     }
 
     const result = await createTicket(userId, type, amount, description);
@@ -140,6 +171,40 @@ app.post('/create-ticket', authenticateRequest, sanitizeInput, async (req, res) 
     }
   } catch (error) {
     console.error('Error creating ticket:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// Get GC limits endpoint
+app.get('/gc-limits', authenticateRequest, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('gc_limits')
+      .select('*');
+
+    if (error) {
+      console.error('Error fetching GC limits:', error);
+      return res.status(500).json({ success: false, error: 'Failed to fetch GC limits' });
+    }
+
+    const limits = {
+      deposit: { min: 50, max: 500 },
+      withdraw: { min: 50, max: 500 }
+    };
+
+    data?.forEach(limit => {
+      limits[limit.limit_type] = {
+        min: limit.min_amount,
+        max: limit.max_amount
+      };
+    });
+
+    res.json({
+      success: true,
+      data: limits
+    });
+  } catch (error) {
+    console.error('Error getting GC limits:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
